@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tts_plugin_aivisspeech"]
+
+[project]
+name = "tts-plugin-avisspeech"
+version = "0.1.0"
+description = "AivisSpeech Engine 向け TTS Plugin"
+requires-python = ">=3.10"
+dependencies = [
+    "tts-plugin-bridge",
+    "aiohttp>=3.9",
+]
+license = {text = "MIT"}
+
+[project.entry-points."tts_bridge.connectors"]
+aivisspeech = "tts_plugin_aivisspeech.connector:AivisSpeechConnector"
+
+[tool.uv.sources]
+tts-plugin-bridge = { path = "../tts-plugin-bridge", editable = true }
+
+[dependency-groups]
+dev = [
+    "aioresponses>=0.7.8",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.15.12",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
