@@ -26,12 +26,10 @@ class AivisSpeechConnector(TTSConnector):
         server_url: str = "http://localhost:10101",
         timeout: float = 30.0,
         default_style_id: Optional[int] = None,
-        max_wait: float = 120.0,
     ):
         self.server_url = server_url.rstrip("/")
         self.timeout = aiohttp.ClientTimeout(total=timeout)
         self.default_style_id = default_style_id
-        self.max_wait = max_wait
         self._session: aiohttp.ClientSession | None = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -50,13 +48,16 @@ class AivisSpeechConnector(TTSConnector):
             return False
 
     async def list_speakers(self) -> list[dict[str, Any]]:
-        session = await self._get_session()
-        async with session.get(f"{self.server_url}/speakers") as resp:
-            if resp.status != 200:
-                raise RuntimeError(
-                    f"Failed to fetch speakers: HTTP {resp.status}"
-                )
-            return await resp.json()
+        try:
+            session = await self._get_session()
+            async with session.get(f"{self.server_url}/speakers") as resp:
+                if resp.status != 200:
+                    raise RuntimeError(
+                        f"Failed to fetch speakers: HTTP {resp.status}"
+                    )
+                return await resp.json()
+        except (aiohttp.ClientError, RuntimeError) as e:
+            raise type(e)(f"Cannot list speakers: {e}") from e
 
     def _resolve_style_id(self, req: TTSRequest) -> Optional[int]:
         style_id = req.extra.get("style_id")
@@ -117,9 +118,6 @@ class AivisSpeechConnector(TTSConnector):
                 val = max(-0.15, min(0.15, float(req.extra["pitch_scale"])))
                 audio_query["pitchScale"] = val
 
-            if req.text:
-                audio_query["kana"] = req.text
-
             async with session.post(
                 f"{self.server_url}/synthesis",
                 params={"speaker": style_id},
@@ -131,14 +129,19 @@ class AivisSpeechConnector(TTSConnector):
                         f"synthesis failed: HTTP {resp.status}: {error_text}"
                     )
                 audio_data = await resp.read()
-                return TTSResponse.ok(audio_data=audio_data)
+                return TTSResponse.ok(
+                    audio_data=audio_data,
+                    metadata={
+                        "speed_scale": clamped_speed,
+                        "volume_scale": clamped_volume
+                        if req.volume is not None
+                        else None,
+                        "style_id": style_id,
+                    },
+                )
 
-        except asyncio.TimeoutError:
-            return TTSResponse.fail(
-                f"Synthesis timed out (max_wait={self.max_wait}s)"
-            )
-        except aiohttp.ClientError as e:
-            return TTSResponse.fail(f"Connection error: {e}")
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            return TTSResponse.fail(f"Request error: {e}")
         except Exception as e:
             return TTSResponse.fail(
                 f"Unexpected error: {type(e).__name__}: {e}"

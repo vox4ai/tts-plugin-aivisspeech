@@ -1,3 +1,4 @@
+import aiohttp
 import pytest
 from aioresponses import aioresponses
 from tts_plugin_bridge.protocol import TTSRequest
@@ -17,7 +18,7 @@ MOCK_SAMPLE_AUDIO_QUERY = {
     "pauseLengthScale": 1,
     "outputSamplingRate": 44100,
     "outputStereo": False,
-    "kana": "hello",
+    "kana": "こんにちは",
 }
 
 
@@ -190,7 +191,7 @@ async def test_connector_extra_params():
         assert body["postPhonemeLength"] == 0.3
         assert body["outputStereo"] is True
         assert body["pitchScale"] == 0.05
-        assert body["kana"] == "hello"
+        assert body["kana"] == "こんにちは"
     await connector.close()
 
 
@@ -226,6 +227,64 @@ async def test_connector_speed_clamping():
 
 
 @pytest.mark.asyncio
+async def test_connector_metadata():
+    connector = AivisSpeechConnector(
+        server_url="http://localhost:10101", default_style_id=42
+    )
+    req = TTSRequest(text="hello", speed=0.3, volume=2.5)
+
+    with aioresponses() as m:
+        m.post(
+            "http://localhost:10101/audio_query?speaker=42&text=hello",
+            status=200,
+            payload=MOCK_SAMPLE_AUDIO_QUERY.copy(),
+        )
+        m.post(
+            "http://localhost:10101/synthesis?speaker=42",
+            status=200,
+            body=b"audio",
+        )
+
+        res = await connector.synthesize(req)
+        assert res.success is True
+        assert res.metadata["speed_scale"] == 0.5
+        assert res.metadata["volume_scale"] == 2.0
+        assert res.metadata["style_id"] == 42
+    await connector.close()
+
+
+@pytest.mark.asyncio
+async def test_connector_kana_not_overwritten():
+    connector = AivisSpeechConnector(
+        server_url="http://localhost:10101", default_style_id=1
+    )
+    req = TTSRequest(text="漢字交じりの日本語テキストです", speed=1.0)
+
+    with aioresponses() as m:
+        m.post(
+            "http://localhost:10101/audio_query?speaker=1&text=%E6%BC%A2%E5%AD%97%E4%BA%A4%E3%81%98%E3%82%8A%E3%81%AE%E6%97%A5%E6%9C%AC%E8%AA%9E%E3%83%86%E3%82%AD%E3%82%B9%E3%83%88%E3%81%A7%E3%81%99",
+            status=200,
+            payload=MOCK_SAMPLE_AUDIO_QUERY.copy(),
+        )
+        m.post(
+            "http://localhost:10101/synthesis?speaker=1",
+            status=200,
+            body=b"audio",
+        )
+
+        res = await connector.synthesize(req)
+        assert res.success is True
+
+        synth_calls = [
+            v for k, v in m.requests.items()
+            if k[0] == "POST" and "/synthesis" in str(k[1])
+        ]
+        body = synth_calls[0][0].kwargs["json"]
+        assert body["kana"] == "こんにちは"
+    await connector.close()
+
+
+@pytest.mark.asyncio
 async def test_connector_list_speakers():
     connector = AivisSpeechConnector(server_url="http://localhost:10101")
     mock_speakers = [
@@ -240,6 +299,26 @@ async def test_connector_list_speakers():
         m.get("http://localhost:10101/speakers", status=200, payload=mock_speakers)
         speakers = await connector.list_speakers()
         assert speakers == mock_speakers
+    await connector.close()
+
+
+@pytest.mark.asyncio
+async def test_connector_list_speakers_http_error():
+    connector = AivisSpeechConnector(server_url="http://localhost:10101")
+    with aioresponses() as m:
+        m.get("http://localhost:10101/speakers", status=500)
+        with pytest.raises(RuntimeError, match="Cannot list speakers"):
+            await connector.list_speakers()
+    await connector.close()
+
+
+@pytest.mark.asyncio
+async def test_connector_list_speakers_connection_error():
+    connector = AivisSpeechConnector(server_url="http://localhost:10101")
+    with aioresponses() as m:
+        m.get("http://localhost:10101/speakers", exception=aiohttp.ClientError)
+        with pytest.raises(aiohttp.ClientError, match="Cannot list speakers"):
+            await connector.list_speakers()
     await connector.close()
 
 

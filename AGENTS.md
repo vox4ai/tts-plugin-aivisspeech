@@ -1,4 +1,4 @@
-# tts-plugin-avisspeech
+# tts-plugin-aivisspeech
 
 **Plugin for AivisSpeech Engine (VOICEVOX-compatible HTTP API)**
 

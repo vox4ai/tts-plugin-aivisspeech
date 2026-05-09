@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 packages = ["tts_plugin_aivisspeech"]
 
 [project]
-name = "tts-plugin-avisspeech"
+name = "tts-plugin-aivisspeech"
 version = "0.1.0"
 description = "AivisSpeech Engine 向け TTS Plugin"
 requires-python = ">=3.10"
