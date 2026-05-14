@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
 
 import aiohttp
 from tts_plugin_bridge.protocol import TTSConnector, TTSRequest, TTSResponse
@@ -150,6 +150,11 @@ class AivisSpeechConnector(TTSConnector):
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
+
+    async def synthesize_stream(self, req: TTSRequest) -> AsyncIterator[bytes]:
+        result = await self.synthesize(req)
+        if result.success and result.audio_data:
+            yield result.audio_data
 
     async def __aenter__(self):
         return self
