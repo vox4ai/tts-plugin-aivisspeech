@@ -17,4 +17,4 @@ dist/
 uv.lock
 
 # Generated
-GEMINI.md
+GEMINI.md.coverage
